@@ -150,6 +150,7 @@ form.one{grid-template-columns:1fr}
 .ghead{display:flex;align-items:baseline;gap:10px}.ghead b{font-size:22px}.ghead span{font-weight:600}
 #gsvg{width:100%;height:170px;display:block;margin:8px 0 4px;touch-action:pan-y}
 .gax{display:flex;justify-content:space-between}
+.acts{display:flex;flex-wrap:wrap}.acts .primary{flex:1}.ia{display:flex;gap:6px}
 </style>
 </head>
 <body>
@@ -211,6 +212,18 @@ form.one{grid-template-columns:1fr}
   </section>
 
   <section>
+    <h2>Anggaran bulan ini</h2>
+    <div class="card">
+      <div id="bbars"></div>
+      <div class="acts2" style="margin-top:6px"><button type="button" id="bset">Atur anggaran</button></div>
+      <form id="bf" class="card one" hidden style="box-shadow:none;padding:12px 0 0">
+        <label class="f">Kategori<select id="bkat"></select></label>
+        <label class="f">Batas per bulan (Rp), isi 0 untuk menghapus<input id="bval" inputmode="numeric" placeholder="0" required></label>
+        <button class="primary" type="submit">Simpan anggaran</button>
+      </form>
+    </div>
+  </section>
+  <section>
     <h2>Pengeluaran terbesar</h2>
     <div class="card">
       <div class="crit">
@@ -264,7 +277,8 @@ form.one{grid-template-columns:1fr}
       <label class="f full">Catatan<input id="cat" placeholder="Contoh: makan siang di warung"></label>
       <div class="acts full">
         <button type="button" id="now">Pakai waktu sekarang</button>
-        <button class="primary" type="submit">Simpan transaksi</button>
+        <button type="button" id="ecancel" hidden>Batal ubah</button>
+        <button class="primary" id="fsave" type="submit">Simpan transaksi</button>
       </div>
     </form>
   </section>
@@ -289,6 +303,16 @@ form.one{grid-template-columns:1fr}
   <section><h2>Aset &amp; investasi</h2>
     <div class="card" id="asum"></div>
     <div class="acts2" style="margin-top:10px"><button type="button" id="arefresh">Perbarui harga</button></div>
+  </section>
+  <section>
+    <h2>Kurs USD/IDR</h2>
+    <div class="card">
+      <div class="ghead"><b id="kv">-</b><small id="ku"></small></div>
+      <div class="crit" style="margin:10px 0 0">
+        <label class="f">Rupiah (Rp)<input id="kidr" inputmode="numeric" placeholder="0"></label>
+        <label class="f">Dolar AS (US$)<input id="kusd" inputmode="decimal" placeholder="0"></label>
+      </div>
+    </div>
   </section>
   <section id="gsec">
     <h2>Grafik harga</h2>
@@ -381,14 +405,14 @@ form.one{grid-template-columns:1fr}
   var BLN=["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
   var API_URL="https://script.google.com/macros/s/AKfycbyZ1ddE1ODKTmiudBCdfmKQb8i5wZfqB9XDJI6UYVsADYjGX3VqihIEPuLszvdrl4iY/exec"; // URL web app Apps Script (berakhiran /exec)
   var SHEET_MODE=API_URL.indexOf("https://")===0;
-  var TK="rekap-token",CK="rekap-cache",token="",me="",meU="",partner=null,view="all",lastSync=null,busy=false,role="user",cur="home",wish=[],users=[],curSav=0,aset=[],lastAset=0;
+  var TK="rekap-token",CK="rekap-cache",token="",me="",meU="",partner=null,view="all",lastSync=null,busy=false,role="user",cur="home",wish=[],users=[],curSav=0,aset=[],lastAset=0,editId=null,lastVer="",lastFull=0,kurs=null,lastKurs=0,bud=[];
   function getToken(){try{return localStorage.getItem(TK)||sessionStorage.getItem(TK)||""}catch(e){return ""}}
   function saveToken(t,keep){try{localStorage.removeItem(TK);sessionStorage.removeItem(TK);(keep?localStorage:sessionStorage).setItem(TK,t)}catch(e){}}
   function kept(){try{return !!localStorage.getItem(TK)}catch(e){return false}}
   function readCache(){try{return JSON.parse(localStorage.getItem(CK)||"null")}catch(e){return null}}
   function writeCache(){try{localStorage.setItem(CK,JSON.stringify(data))}catch(e){}}
   var data=[];
-  if(!SHEET_MODE){try{data=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){data=[]}try{wish=JSON.parse(localStorage.getItem("rekap-wish-v1")||"[]")}catch(e){wish=[]}try{aset=JSON.parse(localStorage.getItem("rekap-aset-v1")||"[]")}catch(e){aset=[]}}
+  if(!SHEET_MODE){try{data=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){data=[]}try{wish=JSON.parse(localStorage.getItem("rekap-wish-v1")||"[]")}catch(e){wish=[]}try{aset=JSON.parse(localStorage.getItem("rekap-aset-v1")||"[]")}catch(e){aset=[]}try{bud=JSON.parse(localStorage.getItem("rekap-bud-v1")||"[]")}catch(e){bud=[]}}
   var $=function(id){return document.getElementById(id)};
   var rp=function(n){return (n<0?"-":"")+"Rp"+Math.abs(n).toLocaleString("id-ID")};
   var short=function(n){var a=Math.abs(n);return a>=1e9?(a/1e9).toFixed(1)+" M":a>=1e6?(a/1e6).toFixed(1)+" jt":a>=1e3?Math.round(a/1e3)+" rb":String(a)};
@@ -399,18 +423,36 @@ form.one{grid-template-columns:1fr}
   function parse(r){return r.text().then(function(t){try{return JSON.parse(t)}catch(e){var er=new Error("Respons server tidak terbaca.");er.net=true;throw er}})}
   function post(body){return fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}).then(parse).catch(function(e){throw net(e)})}
   function call(body){return post(Object.assign({token:token},body)).then(function(j){if(j.error)throw new Error(j.error);return j})}
-  function getJson(){return fetch(API_URL+"?token="+encodeURIComponent(token),{cache:"no-store"}).then(parse).catch(function(e){throw net(e)})}
+  function getJson(){var q=(lastVer&&Date.now()-lastFull<3e5)?"&v="+encodeURIComponent(lastVer):"";return fetch(API_URL+"?token="+encodeURIComponent(token)+q,{cache:"no-store"}).then(parse).catch(function(e){throw net(e)})}
   function pause(ms){return new Promise(function(r){setTimeout(r,ms)})}
   function netMsg(err){return err.net?"Koneksi terputus. Perubahan mungkin sudah tersimpan, muat ulang untuk memeriksa.":err.message}
+  var QRE=/^(add|edit|delete)$/;
+  function qget(){try{return JSON.parse(localStorage.getItem("rekap-queue")||"[]")}catch(e){return []}}
+  function qset(a){try{localStorage.setItem("rekap-queue",JSON.stringify(a))}catch(e){}}
+  function qadd(b){var a=qget();a.push(b);qset(a)}
+  function syncOk(){var n=qget().length;if(n)setSync("off","Menunggu sinkron ("+n+")");else{lastSync=new Date();setSync("ok","Tersinkron "+hm(lastSync))}}
+  // Kirim perubahan yang tertunda (saat offline) berurutan; berhenti bila koneksi masih putus.
+  function flushQ(){
+    return qget().reduce(function(p){return p.then(function(go){
+      if(!go)return false;var b=qget()[0];if(!b)return true;
+      return call(b).then(function(){qset(qget().slice(1));return true}).catch(function(err){
+        if(err.net)return false;qset(qget().slice(1));toast("Perubahan tertunda ditolak: "+err.message,true);return true;
+      });
+    })},Promise.resolve(true));
+  }
   // Penulisan yang responsnya tidak terbaca belum tentu gagal: periksa ke server dulu, kirim ulang bila belum masuk.
+  // Transaksi yang tak bisa terkirim karena offline masuk antrean dan dikirim otomatis saat online.
   function safeWrite(body,exists){
+    if(QRE.test(body.action)&&!navigator.onLine){qadd(body);return Promise.resolve({queued:true})}
     return call(body).catch(function(err){
       if(!err.net)throw err;
       return pause(1200).then(function(){busy=false;return load()}).then(function(ok){
         if(ok&&exists())return;
         return call(body).catch(function(e2){
           if(!e2.net)throw e2;
-          return pause(1500).then(function(){busy=false;return load()}).then(function(ok2){if(!(ok2&&exists()))throw e2});
+          return pause(1500).then(function(){busy=false;return load()}).then(function(ok2){
+            if(!(ok2&&exists())){if(QRE.test(body.action)){qadd(body);return {queued:true}}throw e2}
+          });
         });
       });
     }).then(function(r){syncSoon();return r});
@@ -434,16 +476,18 @@ form.one{grid-template-columns:1fr}
   function hm(d){return d.toTimeString().slice(0,5)}
   function load(){
     if(busy)return Promise.resolve();
+    if(qget().length){busy=true;setSync("busy","Mengirim perubahan tertunda…");return flushQ().then(function(ok){busy=false;if(ok&&!qget().length){lastFull=0;return load()}syncOk();return false})}
     busy=true;setSync("busy","Menyinkronkan…");
     return getJson().then(function(j){
       if(j.error)throw new Error(j.error);
       lastSync=new Date();
+      if(j.same){syncOk();status("");return true}
       if(j.admin){role="admin";me=j.nama;meU=j.me;partner=null;$("out").textContent="Keluar ("+me+")";applyRole();fillAcc();setSync("ok","Tersinkron "+hm(lastSync));status("");return loadAdmin()}
-      role="user";data=j.rows;wish=j.wish||[];aset=j.aset||[];writeCache();
+      role="user";data=j.rows;wish=j.wish||[];aset=j.aset||[];bud=j.bud||[];lastVer=j.ver||"";lastFull=Date.now();writeCache();
       if(j.nama){me=j.nama;$("out").textContent="Keluar ("+me+")"}
       meU=j.me||meU;partner=j.pasangan||null;applyPartner();fillAcc();
       try{localStorage.setItem("rekap-meta",JSON.stringify({u:meU,p:partner,n:me,r:role}))}catch(e){}
-      setSync("ok","Tersinkron "+hm(lastSync));status("");render();maybeRefreshAset();return true;
+      setSync("ok","Tersinkron "+hm(lastSync));status("");render();maybeRefreshAset();fetchKurs(false);return true;
     }).catch(function(err){
       if(/sesi/i.test(err.message)){logout("Sesi berakhir. Silakan masuk lagi.");return}
       var on=navigator.onLine;
@@ -469,14 +513,15 @@ form.one{grid-template-columns:1fr}
     e.preventDefault();
     var n=Number($("jumlah").value.replace(/\D/g,""));
     if(!n)return;
+    if(editId){saveEdit(n);return}
     var item={id:Date.now(),tipe:tipe(),jumlah:n,tgl:$("tgl").value,jam:$("jam").value,kat:$("kat").value,cat:$("cat").value.trim(),oleh:me,pemilik:meU,untuk:"me"};
     if(partner&&$("untuk").value==="pasangan"){item.pemilik=partner.u;item.untuk="pasangan"}
     data.push(item);save();
-    $("jumlah").value="";$("cat").value="";$("bulan").value=item.tgl.slice(0,7);setNow();toast("Transaksi tersimpan");go("home");
+    $("jumlah").value="";$("cat").value="";$("bulan").value=item.tgl.slice(0,7);setNow();var bm=budMsg(item);toast(bm||"Transaksi tersimpan",!!bm&&bm.indexOf("terlampaui")>=0);go("home");
     render();
     if(SHEET_MODE){
       setSync("busy","Menyimpan…");
-      safeWrite({action:"add",row:item},function(){return data.some(function(x){return x.id===item.id})}).then(function(){writeCache();lastSync=new Date();setSync("ok","Tersinkron "+hm(lastSync));status("")}).catch(function(err){
+      safeWrite({action:"add",row:item},function(){return data.some(function(x){return x.id===item.id})}).then(function(){writeCache();syncOk();status("")}).catch(function(err){
         data=data.filter(function(x){return x.id!==item.id});render();setSync("err","Gagal menyimpan");status("Gagal menyimpan: "+err.message,true);
       });
     }
@@ -490,7 +535,7 @@ form.one{grid-template-columns:1fr}
     var src=data.filter(vis);
     $("hl").textContent=!partner?"Tabungan saya":view==="all"?"Tabungan kita":view==="me"?"Tabungan saya":"Tabungan "+partner.n;
     var allIn=sum(src,"in"),allOut=sum(src,"out");
-    curSav=allIn-allOut;renderWish();renderAset();updRep();topChart(src);
+    curSav=allIn-allOut;renderWish();renderAset();updRep();renderBud(src);topChart(src);
     $("tab").textContent=rp(allIn-allOut);
     $("ain").textContent="Total masuk "+rp(allIn);$("aout").textContent="Total keluar "+rp(allOut);
 
@@ -540,19 +585,20 @@ form.one{grid-template-columns:1fr}
       var by=partner?(on?"untuk "+on:"")+(x.oleh&&x.oleh!==on?(on?", ":"")+"oleh "+x.oleh:""):"";
       html+='<li><div>'+esc(x.kat)+'<small>'+(x.jam?'<b>'+esc(x.jam)+'</b>':'')+esc(x.cat)+(by?'<span class="by">'+esc(by)+'</span>':'')+'</small></div>'+
         '<span class="amt '+x.tipe+'">'+(x.tipe==="in"?"+":"-")+rp(x.jumlah)+'</span>'+
-        '<button data-id="'+x.id+'" aria-label="Hapus">Hapus</button></li>';
+        '<span class="ia"><button data-e="'+x.id+'">Ubah</button><button data-id="'+x.id+'" aria-label="Hapus">Hapus</button></span></li>';
     });
     $("list").innerHTML=html+"</ul>";
   }
 
   $("list").onclick=function(e){
+    var ed=e.target.getAttribute&&e.target.getAttribute("data-e");if(ed){startEdit(ed);return}
     var id=e.target.getAttribute&&e.target.getAttribute("data-id");
     if(!id||!confirm("Hapus transaksi ini?"))return;
     var old=data;
     data=data.filter(function(x){return String(x.id)!==id});save();render();
     if(SHEET_MODE){
       setSync("busy","Menghapus…");
-      safeWrite({action:"delete",id:id},function(){return !data.some(function(x){return String(x.id)===id})}).then(function(){writeCache();lastSync=new Date();setSync("ok","Tersinkron "+hm(lastSync));status("")}).catch(function(err){
+      safeWrite({action:"delete",id:id},function(){return !data.some(function(x){return String(x.id)===id})}).then(function(){writeCache();syncOk();status("")}).catch(function(err){
         data=old;render();setSync("err","Gagal menghapus");status("Gagal menghapus: "+err.message,true);
       });
     }
@@ -663,7 +709,7 @@ form.one{grid-template-columns:1fr}
     $("pnama").value=me;$("puser").value=meU;
     $("pinfo").innerHTML=partner?"Terhubung dengan <b>"+esc(partner.n)+"</b>. Data Anda berdua saling terlihat.":"Belum terhubung dengan pasangan. Penghubungan dilakukan oleh admin setelah menikah.";
   }
-  function saveW(){if(!SHEET_MODE){try{localStorage.setItem("rekap-wish-v1",JSON.stringify(wish));localStorage.setItem("rekap-aset-v1",JSON.stringify(aset))}catch(e){}}}
+  function saveW(){if(!SHEET_MODE){try{localStorage.setItem("rekap-wish-v1",JSON.stringify(wish));localStorage.setItem("rekap-aset-v1",JSON.stringify(aset));localStorage.setItem("rekap-bud-v1",JSON.stringify(bud))}catch(e){}}}
 
   function topChart(src){
     var m=$("tm").value,pr=$("tp").value,k=$("tk").value,n=+$("tn").value,b=$("bulan").value;
@@ -689,13 +735,15 @@ form.one{grid-template-columns:1fr}
     var L=wish.filter(vis).slice().sort(function(a,b){return (a.status==="tercapai")-(b.status==="tercapai")||(pr[a.prio]||0)-(pr[b.prio]||0)||a.target-b.target});
     var tot=L.filter(function(w){return w.status!=="tercapai"}).reduce(function(a,w){return a+w.target},0);
     $("wsum").innerHTML='<div class="split2"><div><small>Total target</small><b>'+rp(tot)+'</b></div><div><small>Tabungan</small><b class="in">'+rp(curSav)+'</b></div><div><small>Kekurangan</small><b class="out">'+rp(Math.max(0,tot-curSav))+'</b></div></div>';
+    var rem=Math.max(0,curSav),alloc={};
+    L.forEach(function(w){if(w.status!=="tercapai"){var al=Math.min(w.target,rem);alloc[w.id]=al;rem-=al}});
     $("wlist").innerHTML=L.length?L.map(function(w){
-      var done=w.status==="tercapai",pc=w.target?Math.max(0,Math.min(100,Math.round(curSav/w.target*100))):100;
+      var done=w.status==="tercapai",pc=w.target?Math.round((alloc[w.id]||0)/w.target*100):100;
       var on=partner?(w.pemilik===partner.u?partner.n:(w.pemilik===meU?me:"")):"";
       return '<div class="card wi'+(done?" done":"")+'"><div class="wh"><b>'+esc(w.nama)+'</b><span class="pill p'+Math.min(1,pr[w.prio]||0)+'">'+esc(w.prio)+'</span></div>'+
         '<div class="wt">'+rp(w.target)+(on?' <small>untuk '+esc(on)+'</small>':'')+'</div>'+(w.cat?'<small>'+esc(w.cat)+'</small>':'')+
         '<div class="bar"><i style="width:'+(done?100:pc)+'%"></i></div>'+
-        '<div class="wa"><small>'+(done?"Sudah tercapai":"Tabungan cukup "+pc+"%")+'</small><span><button data-w="t" data-id="'+w.id+'">'+(done?"Batalkan":"Tandai tercapai")+'</button> <button data-w="d" data-id="'+w.id+'">Hapus</button></span></div></div>';
+        '<div class="wa"><small>'+(done?"Sudah tercapai":"Terpenuhi "+pc+"% dari tabungan (urut prioritas)")+'</small><span><button data-w="t" data-id="'+w.id+'">'+(done?"Batalkan":"Tandai tercapai")+'</button> <button data-w="d" data-id="'+w.id+'">Hapus</button></span></div></div>';
     }).join(""):'<div class="card empty">Belum ada wishlist. Tambahkan barang impian Anda di atas.</div>';
   }
   $("wtarget").oninput=function(){var d=this.value.replace(/\D/g,"");this.value=d?Number(d).toLocaleString("id-ID"):""};
@@ -868,7 +916,7 @@ form.one{grid-template-columns:1fr}
     L.forEach(function(a){var v=a.jumlah*a.harga;if(v>0)by[a.nama]=(by[a.nama]||0)+v});
     var ak=Object.keys(by).sort(function(x,y){return by[y]-by[x]});
     $("alok").innerHTML=ak.length?ak.map(function(k){var p=by[k]/tv*100;return '<div class="br"><div>'+esc(k)+'</div><div class="bt"><i style="width:'+Math.max(3,p)+'%;background:linear-gradient(90deg,#3fc4a5,#0e7c66)"></i></div><b>'+Math.round(p)+'%</b></div>'}).join(""):'<div class="empty">Belum ada aset bernilai.</div>';
-    $("asum").innerHTML='<div class="split2"><div><small>Nilai aset</small><b>'+rp(tv)+'</b></div><div><small>Modal</small><b>'+rp(tm)+'</b></div><div><small>Untung/rugi</small><b class="'+(g<0?"out":"in")+'">'+glText(g,tm)+'</b></div></div><div class="note" style="margin:12px 0 0">Tabungan + aset: <b>'+rp(curSav+tv)+'</b></div>';
+    $("asum").innerHTML='<div class="split2"><div><small>Nilai aset</small><b>'+rp(tv)+'</b></div><div><small>Modal</small><b>'+rp(tm)+'</b></div><div><small>Untung/rugi</small><b class="'+(g<0?"out":"in")+'">'+glText(g,tm)+'</b></div></div><div class="note" style="margin:12px 0 0">Tabungan + aset: <b>'+rp(curSav+tv)+'</b>'+(kurs?' <small>(setara '+usd(curSav+tv)+')</small>':'')+'</div>';
     $("alist").innerHTML=L.length?L.map(function(a){
       var val=a.jumlah*a.harga,gl=val-a.modal,u=(JN[a.jenis]||JN.lainnya)[1],on=partner?(a.pemilik===partner.u?partner.n:(a.pemilik===meU?me:"")):"";
       return '<div class="card wi"><div class="wh"><b>'+esc(a.nama)+'</b><span class="pill p1">'+esc((JN[a.jenis]||JN.lainnya)[0])+(a.kode?" "+esc(a.kode.toUpperCase()):"")+'</span></div>'+
@@ -925,7 +973,7 @@ form.one{grid-template-columns:1fr}
   var gcache={};
   function dstr(t){return new Date(t).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}
   function gsyms(){
-    var o=[["ihsg","IHSG"],["emas","Emas (Rp per gram)"]],seen={};
+    var o=[["ihsg","IHSG"],["emas","Emas (Rp per gram)"],["usdidr","Kurs USD/IDR"]],seen={};
     aset.filter(vis).forEach(function(a){
       var k=a.jenis==="saham"&&a.kode?"saham:"+a.kode.toUpperCase():a.jenis==="kripto"&&a.kode?"kripto:"+a.kode.toLowerCase():"";
       if(k&&!seen[k]){seen[k]=1;o.push([k,a.nama+" ("+a.kode.toUpperCase()+")"])}
@@ -970,6 +1018,82 @@ form.one{grid-template-columns:1fr}
     }
     sv.addEventListener("pointermove",mv);sv.addEventListener("pointerdown",mv);
   }
+
+  // ---------- Edit transaksi ----------
+  function startEdit(id){
+    var x=data.filter(function(r){return String(r.id)===String(id)})[0];if(!x)return;
+    editId=x.id;
+    document.querySelector("input[name=tipe][value="+x.tipe+"]").checked=true;fillKat();
+    $("kat").value=x.kat;$("jumlah").value=Number(x.jumlah).toLocaleString("id-ID");$("tgl").value=x.tgl;$("jam").value=x.jam||"00:00";$("cat").value=x.cat||"";
+    $("fsave").textContent="Simpan perubahan";$("ecancel").hidden=false;$("untukwrap").hidden=true;go("add");
+  }
+  function endEdit(){editId=null;$("f").reset();fillKat();setNow();$("fsave").textContent="Simpan transaksi";$("ecancel").hidden=true;applyPartner()}
+  $("ecancel").onclick=function(){endEdit();go("home")};
+  function saveEdit(n){
+    var old=data,it=data.filter(function(x){return String(x.id)===String(editId)})[0];
+    if(!it){endEdit();return}
+    var nw=Object.assign({},it,{tipe:tipe(),jumlah:n,tgl:$("tgl").value,jam:$("jam").value,kat:$("kat").value,cat:$("cat").value.trim()});
+    data=data.map(function(x){return x===it?nw:x});save();endEdit();
+    $("bulan").value=nw.tgl.slice(0,7);render();toast("Transaksi diperbarui");go("home");
+    if(SHEET_MODE){
+      setSync("busy","Menyimpan…");
+      safeWrite({action:"edit",row:nw},function(){return data.some(function(x){return x.id===nw.id&&x.jumlah===nw.jumlah&&x.tgl===nw.tgl&&x.jam===nw.jam&&x.kat===nw.kat&&x.cat===nw.cat&&x.tipe===nw.tipe})})
+        .then(function(){writeCache();syncOk();status("")})
+        .catch(function(err){data=old;render();setSync("err","Gagal menyimpan");toast("Gagal menyimpan: "+netMsg(err),true)});
+    }
+  }
+
+  // ---------- Anggaran ----------
+  function budOK(o){return view==="all"||!partner?true:view==="me"?o===meU:o===partner.u}
+  function budState(k,ym){
+    var s=0,l=0;
+    data.filter(vis).forEach(function(x){if(x.tipe==="out"&&x.kat===k&&x.tgl.slice(0,7)===ym)s+=x.jumlah});
+    bud.forEach(function(r){if(r.kat===k&&budOK(r.pemilik))l+=r.batas});
+    return {s:s,l:l};
+  }
+  function budMsg(it){
+    if(it.tipe!=="out")return "";
+    var st=budState(it.kat,it.tgl.slice(0,7));if(!st.l)return "";
+    var p=Math.round(st.s/st.l*100);
+    return p>100?"Anggaran "+it.kat+" terlampaui ("+p+"%)":p>=80?"Anggaran "+it.kat+" sudah "+p+"%":"";
+  }
+  function renderBud(src){
+    var b=$("bulan").value,sp={},lim={};
+    src.forEach(function(x){if(x.tipe==="out"&&(!b||x.tgl.slice(0,7)===b))sp[x.kat]=(sp[x.kat]||0)+x.jumlah});
+    bud.forEach(function(r){if(budOK(r.pemilik))lim[r.kat]=(lim[r.kat]||0)+r.batas});
+    var ks=Object.keys(lim);
+    $("bbars").innerHTML=ks.length?ks.map(function(k){
+      var s=sp[k]||0,p=s/lim[k]*100,c=p>100?"linear-gradient(90deg,#f07a8a,#c23b4e)":p>=80?"linear-gradient(90deg,#f0c36a,#e0a02c)":"linear-gradient(90deg,#3fc4a5,#0e7c66)";
+      return '<div class="br"><div>'+esc(k)+'<br><small>'+rp(s)+' dari '+rp(lim[k])+'</small></div><div class="bt"><i style="width:'+Math.min(100,Math.max(2,p))+'%;background:'+c+'"></i></div><b class="'+(p>100?"out":"")+'">'+Math.round(p)+'%</b></div>';
+    }).join(""):'<div class="empty">Belum ada anggaran. Ketuk "Atur anggaran" untuk menambah.</div>';
+  }
+  $("bkat").innerHTML=KAT.out.map(function(k){return "<option>"+k+"</option>"}).join("");
+  $("bset").onclick=function(){$("bf").hidden=!$("bf").hidden};
+  $("bval").oninput=function(){fmtN(this)};
+  $("bf").onsubmit=function(e){
+    e.preventDefault();
+    var k=$("bkat").value,v=Number($("bval").value.replace(/\D/g,"")),old=bud;
+    bud=bud.filter(function(r){return !(r.kat===k&&r.pemilik===meU)});
+    if(v>0)bud.push({pemilik:meU,kat:k,batas:v});
+    saveW();$("bval").value="";$("bf").hidden=true;render();toast(v>0?"Anggaran disimpan":"Anggaran dihapus");
+    if(SHEET_MODE)safeWrite({action:"bud_set",kat:k,batas:v},function(){return v>0?bud.some(function(r){return r.kat===k&&r.pemilik===meU&&r.batas===v}):!bud.some(function(r){return r.kat===k&&r.pemilik===meU})}).catch(function(err){bud=old;render();toast("Gagal menyimpan: "+netMsg(err),true)});
+  };
+
+  // ---------- Kurs USD/IDR ----------
+  function usd(n){return "US$ "+(n/kurs.r).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function renderKurs(){
+    if(!kurs)return;
+    $("kv").textContent="US$ 1 = "+rp(Math.round(kurs.r));
+    $("ku").textContent="dicek "+hm(new Date(kurs.t));
+  }
+  function fetchKurs(force){
+    if(!SHEET_MODE||role==="admin")return;
+    if(!force&&Date.now()-lastKurs<6e5)return;
+    lastKurs=Date.now();
+    call({action:"kurs"}).then(function(j){kurs={r:j.usdidr,t:Date.now()};renderKurs();renderAset()}).catch(function(){});
+  }
+  $("kidr").oninput=function(){fmtN(this);var v=Number(this.value.replace(/\D/g,""));$("kusd").value=kurs&&v?(v/kurs.r).toFixed(2):""};
+  $("kusd").oninput=function(){var v=parseFloat(this.value.replace(",","."));$("kidr").value=kurs&&v>0?Math.round(v*kurs.r).toLocaleString("id-ID"):""};
 
   function vis(x){
     if(view==="all"||!partner)return true;
@@ -1031,7 +1155,7 @@ form.one{grid-template-columns:1fr}
   };
   $("tog").onclick=function(){var k=$("kode"),h=k.type==="password";k.type=h?"text":"password";this.textContent=h?"Sembunyikan":"Tampilkan"};
   $("out").onclick=function(){if(confirm("Keluar dari aplikasi di perangkat ini?"))logout("")};
-  $("sync").onclick=function(){if(SHEET_MODE&&token)load()};
+  $("sync").onclick=function(){if(SHEET_MODE&&token){lastFull=0;load()}};
   if(SHEET_MODE){
     $("bak").hidden=$("res").hidden=true;
     token=getToken();
