@@ -147,6 +147,9 @@ form.one{grid-template-columns:1fr}
   #rpt .ft{margin-top:18px;color:#777;font-size:11px}
 }
 .acts2{display:flex;gap:8px;flex-wrap:wrap}
+.ghead{display:flex;align-items:baseline;gap:10px}.ghead b{font-size:22px}.ghead span{font-weight:600}
+#gsvg{width:100%;height:170px;display:block;margin:8px 0 4px;touch-action:pan-y}
+.gax{display:flex;justify-content:space-between}
 </style>
 </head>
 <body>
@@ -286,6 +289,21 @@ form.one{grid-template-columns:1fr}
   <section><h2>Aset &amp; investasi</h2>
     <div class="card" id="asum"></div>
     <div class="acts2" style="margin-top:10px"><button type="button" id="arefresh">Perbarui harga</button></div>
+  </section>
+  <section id="gsec">
+    <h2>Grafik harga</h2>
+    <div class="card">
+      <div class="crit">
+        <label class="f">Tampilkan<select id="gs"></select></label>
+        <label class="f">Rentang<select id="gr"><option value="1m">1 bulan</option><option value="3m" selected>3 bulan</option><option value="1y">1 tahun</option><option value="5y">5 tahun</option></select></label>
+      </div>
+      <div id="gbox"></div>
+    </div>
+    <p class="note" style="margin-top:8px">Data pasar publik dan bisa tertunda atau sedikit berbeda dari broker atau toko emas Anda. IHSG dan emas selalu tersedia. Saham dan kripto muncul di daftar setelah Anda menambahkannya dengan harga otomatis.</p>
+  </section>
+  <section>
+    <h2>Alokasi aset</h2>
+    <div class="card" id="alok"></div>
   </section>
   <section>
     <form id="af" class="card">
@@ -630,7 +648,7 @@ form.one{grid-template-columns:1fr}
     cur=t;
     document.querySelectorAll(".pane").forEach(function(p){p.hidden=p.id!=="p-"+t});
     document.querySelectorAll("#nav button").forEach(function(b){b.classList.toggle("on",b.getAttribute("data-t")===t)});
-    window.scrollTo(0,0);
+    window.scrollTo(0,0);if(t==="aset")drawG();
   }
   function applyRole(){
     var adm=role==="admin",ts=adm?["adm","acc"]:["home","add","wish","aset","acc"];
@@ -846,7 +864,10 @@ form.one{grid-template-columns:1fr}
   function renderAset(){
     var L=aset.filter(vis),tv=0,tm=0;
     L.forEach(function(a){tv+=a.jumlah*a.harga;tm+=a.modal});
-    var g=tv-tm;
+    var g=tv-tm,by={};
+    L.forEach(function(a){var v=a.jumlah*a.harga;if(v>0)by[a.nama]=(by[a.nama]||0)+v});
+    var ak=Object.keys(by).sort(function(x,y){return by[y]-by[x]});
+    $("alok").innerHTML=ak.length?ak.map(function(k){var p=by[k]/tv*100;return '<div class="br"><div>'+esc(k)+'</div><div class="bt"><i style="width:'+Math.max(3,p)+'%;background:linear-gradient(90deg,#3fc4a5,#0e7c66)"></i></div><b>'+Math.round(p)+'%</b></div>'}).join(""):'<div class="empty">Belum ada aset bernilai.</div>';
     $("asum").innerHTML='<div class="split2"><div><small>Nilai aset</small><b>'+rp(tv)+'</b></div><div><small>Modal</small><b>'+rp(tm)+'</b></div><div><small>Untung/rugi</small><b class="'+(g<0?"out":"in")+'">'+glText(g,tm)+'</b></div></div><div class="note" style="margin:12px 0 0">Tabungan + aset: <b>'+rp(curSav+tv)+'</b></div>';
     $("alist").innerHTML=L.length?L.map(function(a){
       var val=a.jumlah*a.harga,gl=val-a.modal,u=(JN[a.jenis]||JN.lainnya)[1],on=partner?(a.pemilik===partner.u?partner.n:(a.pemilik===meU?me:"")):"";
@@ -899,6 +920,56 @@ form.one{grid-template-columns:1fr}
     saveW();renderAset();
     if(SHEET_MODE)safeWrite(body,ex).then(function(){if(a==="a")refreshAset(true)}).catch(function(err){aset=old;renderAset();toast("Gagal: "+netMsg(err),true)});
   };
+
+  // ---------- Grafik harga ----------
+  var gcache={};
+  function dstr(t){return new Date(t).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}
+  function gsyms(){
+    var o=[["ihsg","IHSG"],["emas","Emas (Rp per gram)"]],seen={};
+    aset.filter(vis).forEach(function(a){
+      var k=a.jenis==="saham"&&a.kode?"saham:"+a.kode.toUpperCase():a.jenis==="kripto"&&a.kode?"kripto:"+a.kode.toLowerCase():"";
+      if(k&&!seen[k]){seen[k]=1;o.push([k,a.nama+" ("+a.kode.toUpperCase()+")"])}
+    });
+    return o;
+  }
+  function drawG(){
+    if(!SHEET_MODE){$("gsec").hidden=true;return}
+    var cur=$("gs").value,o=gsyms();
+    $("gs").innerHTML=o.map(function(x){return '<option value="'+esc(x[0])+'">'+esc(x[1])+'</option>'}).join("");
+    if(cur&&o.some(function(x){return x[0]===cur}))$("gs").value=cur;
+    var sym=$("gs").value,rg=$("gr").value,key=sym+"|"+rg,c=gcache[key];
+    if(c&&Date.now()-c.t<18e5){chartG(c.p,sym);return}
+    $("gbox").innerHTML='<div class="empty">Memuat grafik…</div>';
+    call({action:"grafik",sym:sym,range:rg}).then(function(j){
+      gcache[key]={t:Date.now(),p:j.points};
+      if($("gs").value===sym&&$("gr").value===rg)chartG(j.points,sym);
+    }).catch(function(err){
+      if($("gs").value===sym&&$("gr").value===rg)$("gbox").innerHTML='<div class="empty">'+esc(err.net?"Koneksi terputus. Coba lagi.":err.message)+'</div>';
+    });
+  }
+  $("gs").onchange=$("gr").onchange=drawG;
+  function chartG(p,sym){
+    var W=320,H=150,P=6,xs=p.map(function(x){return x[0]}),ys=p.map(function(x){return x[1]});
+    var mn=Math.min.apply(null,ys),mx=Math.max.apply(null,ys),sp=(mx-mn)||1;
+    function X(i){return P+i*(W-2*P)/(p.length-1)}
+    function Y(v){return H-P-(v-mn)/sp*(H-2*P)}
+    var d=p.map(function(x,i){return (i?"L":"M")+X(i).toFixed(1)+" "+Y(x[1]).toFixed(1)}).join("");
+    var up=ys[ys.length-1]>=ys[0],ch=(ys[ys.length-1]/ys[0]-1)*100;
+    function fmt(v){return sym==="ihsg"?v.toLocaleString("id-ID",{maximumFractionDigits:2}):rp(Math.round(v))}
+    $("gbox").innerHTML='<div class="ghead"><b id="gv">'+fmt(ys[ys.length-1])+'</b><span class="'+(up?"in":"out")+'">'+(up?"+":"")+ch.toFixed(2)+'% pada rentang ini</span></div><small id="gd">'+dstr(xs[xs.length-1])+'</small>'+
+      '<svg id="gsvg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="Grafik harga"><defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".28"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>'+
+      '<g style="color:var(--'+(up?"in":"out")+')"><path d="'+d+"L"+X(p.length-1).toFixed(1)+" "+(H-P)+"L"+X(0).toFixed(1)+" "+(H-P)+'Z" fill="url(#gg)"/><path d="'+d+'" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></g>'+
+      '<line id="gl" y1="0" y2="'+H+'" stroke="var(--muted)" stroke-width="1" vector-effect="non-scaling-stroke" opacity="0"/></svg>'+
+      '<div class="gax"><small>Terendah '+fmt(mn)+'</small><small>Tertinggi '+fmt(mx)+'</small></div>';
+    var sv=$("gsvg");
+    function mv(e){
+      var r=sv.getBoundingClientRect();if(!r.width)return;
+      var i=Math.max(0,Math.min(p.length-1,Math.round((e.clientX-r.left)/r.width*(p.length-1))));
+      $("gv").textContent=fmt(ys[i]);$("gd").textContent=dstr(xs[i]);
+      var l=$("gl");l.setAttribute("x1",X(i));l.setAttribute("x2",X(i));l.setAttribute("opacity","1");
+    }
+    sv.addEventListener("pointermove",mv);sv.addEventListener("pointerdown",mv);
+  }
 
   function vis(x){
     if(view==="all"||!partner)return true;
