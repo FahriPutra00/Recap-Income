@@ -497,6 +497,28 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
       <div id="sheetbody"></div>
     </div>
   </div>
+  <div id="dsheet" class="sheet" hidden>
+    <div class="sbk" id="dbk"></div>
+    <div class="sp" role="dialog" aria-label="Atur dana darurat">
+      <div class="grab"></div>
+      <button type="button" class="sx" id="dx" aria-label="Tutup">&times;</button>
+      <form id="df" class="card one" style="box-shadow:none">
+        <h2 id="dtitle">Dana darurat</h2>
+        <label class="f">Nama<input id="dnama" required></label>
+        <label class="f">Cara menentukan target<select id="dmode"><option value="b">Kelipatan pengeluaran bulanan</option><option value="n">Nominal tetap</option></select></label>
+        <div id="dbox" style="display:grid;gap:10px">
+          <label class="f">Berapa bulan pengeluaran<input id="dn" type="number" min="1" max="36" inputmode="numeric" value="6"></label>
+          <div class="chips" id="dnchips"><button type="button" class="chipbtn" data-m="3">3 bulan</button><button type="button" class="chipbtn" data-m="6">6 bulan</button><button type="button" class="chipbtn" data-m="9">9 bulan</button><button type="button" class="chipbtn" data-m="12">12 bulan</button></div>
+          <label class="f">Pengeluaran bulanan sebagai dasar<select id="dbase"><option value="a">Otomatis dari rata-rata catatan Anda</option><option value="m">Isi sendiri</option></select></label>
+          <label class="f" id="dbvw" hidden>Pengeluaran bulanan (Rp)<input id="dbv" inputmode="numeric" placeholder="0"></label>
+        </div>
+        <label class="f" id="dtgw" hidden>Target (Rp)<input id="dtg" inputmode="numeric" placeholder="0"></label>
+        <label class="f">Target tercapai pada bulan (opsional)<input type="month" id="dtgl"></label>
+        <div id="dprev" class="note"></div>
+        <div class="acts"><button type="button" id="dcancel">Batal</button><button class="primary" type="submit" id="dsave">Simpan</button></div>
+      </form>
+    </div>
+  </div>
   <button id="fab" class="fab" type="button" aria-label="Catat transaksi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
   <nav id="nav"></nav>
   <div id="toast" role="status"></div>
@@ -861,8 +883,21 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
     rows.forEach(function(x){if(have.indexOf(x.tgl.slice(0,7))>=0)tot+=x.jumlah});
     return tot/have.length;
   }
-  function darN(w){return (w.jenis||"").indexOf("darurat")===0?+w.jenis.slice(7):0}
-  function tgt(w){var n=darN(w);if(n){var a=avgOut();if(a>0)return Math.round(n*a)}return w.target}
+  // Pengaturan dana darurat disimpan di kolom Jenis: "darurat|b|6|a" (6 bulan, dasar otomatis), "darurat|b|6|4000000" (dasar diisi sendiri), "darurat|n" (nominal tetap). Format lama "darurat3" tetap dikenali.
+  function darCfg(w){
+    var j=w.jenis||"";if(j.indexOf("darurat")!==0)return null;
+    var p=j.split("|");
+    if(p.length===1)return {mode:"b",n:+j.slice(7)||3,base:"auto"};
+    return {mode:p[1]==="n"?"n":"b",n:+p[2]||3,base:p[3]&&p[3]!=="a"?+p[3]:"auto"};
+  }
+  function darJ(c){return c.mode==="n"?"darurat|n":"darurat|b|"+c.n+"|"+(c.base==="auto"?"a":c.base)}
+  function isDar(w){return !!darCfg(w)}
+  function darBase(w){var c=darCfg(w);return c.base==="auto"?avgOut():c.base}
+  function tgt(w){var c=darCfg(w);if(c&&c.mode==="b"){var b=darBase(w);if(b>0)return Math.round(c.n*b)}return w.target}
+  function darDesc(w,have){
+    var c=darCfg(w),b=darBase(w),cov=b>0?" Terkumpul menutup "+(have/b).toFixed(1)+" bulan pengeluaran.":"";
+    return c.mode==="n"?"Target nominal tetap."+cov:"Target = "+c.n+" bulan x "+rp(Math.round(b))+" ("+(c.base==="auto"?"rata-rata pengeluaran Anda":"diisi sendiri")+")."+cov;
+  }
   function renderWish(){
     var pr={Tinggi:0,Sedang:1,Rendah:2};
     var L=wish.filter(vis).slice().sort(function(a,b){return (a.status==="tercapai")-(b.status==="tercapai")||(pr[a.prio]||0)-(pr[b.prio]||0)||(b.jenis?1:0)-(a.jenis?1:0)||a.target-b.target});
@@ -887,14 +922,14 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
     var dl=act.some(function(w){return w.tenggat&&tgt(w)-(w.terkumpul||0)>0&&monthsTo(w.tenggat)>=0});
     $("wsum").innerHTML='<div class="split2"><div><small>Tabungan</small><b class="in">'+rp(curSav)+'</b></div><div><small>Disisihkan</small><b>'+rp(alloc)+'</b></div><div><small>Dana bebas</small><b class="'+(freeFunds<0?"out":"in")+'">'+rp(Math.round(freeFunds))+'</b></div></div>'+
       '<div class="note" style="margin:12px 0 0">'+(freeFunds<0?'Dana yang disisihkan melebihi tabungan. Tarik sebagian dari tujuan atau tambah tabungan. ':'')+'Rata-rata tabungan Anda: <b>'+rp(Math.round(avg))+'</b> per bulan'+(dl?'. Target bertenggat butuh <b>'+rp(perM)+'</b> per bulan'+(avg>=perM?', masih terkejar.':', kurang <b class="out">'+rp(Math.round(perM-avg))+'</b> per bulan.'):'.')+'</div>';
-    var hasDar=wish.filter(vis).some(function(w){return darN(w)&&w.status!=="tercapai"}),ao=avgOut();
-    $("darbox").innerHTML=hasDar?"":'<div class="card"><b>Dana darurat belum dibuat</b><p class="note" style="margin:6px 0 10px">Idealnya 3 sampai 6 bulan pengeluaran'+(ao>0?', sekitar <b>'+rp(Math.round(3*ao))+'</b> sampai <b>'+rp(Math.round(6*ao))+'</b> dari rata-rata pengeluaran Anda '+rp(Math.round(ao))+' per bulan':'')+'. Ini penyangga saat penghasilan turun atau ada kebutuhan mendadak.</p><button type="button" id="dar" class="primary">Buat dana darurat</button></div>';
+    var hasDar=wish.filter(vis).some(function(w){return isDar(w)&&w.status!=="tercapai"}),ao=avgOut();
+    $("darbox").innerHTML=hasDar?"":'<div class="card"><b>Dana darurat belum dibuat</b><p class="note" style="margin:6px 0 10px">Idealnya 3 sampai 6 bulan pengeluaran'+(ao>0?', sekitar <b>'+rp(Math.round(3*ao))+'</b> sampai <b>'+rp(Math.round(6*ao))+'</b> dari rata-rata pengeluaran Anda '+rp(Math.round(ao))+' per bulan':'')+'. Anda bebas menentukan sendiri jumlah bulan, dasar pengeluaran, atau nominalnya. Ini penyangga saat penghasilan turun atau ada kebutuhan mendadak.</p><button type="button" id="dar" class="primary">Atur dana darurat</button></div>';
     $("wlist").innerHTML=L.length?L.map(function(w){
-      var done=w.status==="tercapai",T=tgt(w),have=w.terkumpul||0,pc=T?Math.min(100,Math.round(have/T*100)):0,inf=info[w.id],n=darN(w);
+      var done=w.status==="tercapai",T=tgt(w),have=w.terkumpul||0,pc=T?Math.min(100,Math.round(have/T*100)):0,inf=info[w.id],dc=darCfg(w),n=dc?1:0;
       var on=partner?(w.pemilik===partner.u?partner.n:(w.pemilik===meU?me:"")):"";
       return '<div class="card wi'+(done?" done":"")+'"><div class="wh"><b>'+esc(w.nama)+'</b><span class="pill p'+Math.min(1,pr[w.prio]||0)+'">'+esc(n?"Dana darurat":w.prio)+'</span></div>'+
         '<div class="wt">'+rp(have)+' <small>dari '+rp(T)+(on?', untuk '+esc(on):'')+'</small></div>'+(w.cat?'<small>'+esc(w.cat)+'</small>':'')+
-        (n&&ao>0?'<small style="display:block">Target = '+n+' bulan pengeluaran. Terkumpul menutup '+(have/ao).toFixed(1)+' bulan.</small>':'')+
+        (dc?'<small style="display:block">'+darDesc(w,have)+'</small>':'')+
         (w.tenggat&&!done?'<small style="display:block">Target tercapai: '+fYM(w.tenggat)+'</small>':'')+
         '<div class="bar"><i style="width:'+(done?100:pc)+'%"></i></div>'+
         (done?'<span class="chip ok">Tercapai</span>':'<span class="chip '+inf.c+'">'+inf.l+'</span><small style="display:block;margin-top:4px">'+inf.t+'</small>')+
@@ -928,7 +963,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
   $("wlist").onclick=function(e){
     var a=e.target.getAttribute&&e.target.getAttribute("data-w");if(!a)return;
     var id=e.target.getAttribute("data-id");
-    if(a==="e"){startWEdit(id);return}
+    if(a==="e"){var ww=wish.filter(function(x){return String(x.id)===String(id)})[0];if(ww&&isDar(ww))dOpen(ww);else startWEdit(id);return}
     var w=wish.filter(function(x){return String(x.id)===String(id)})[0];if(!w)return;
     var old=wish,T=tgt(w),have=w.terkumpul||0;
     function setF(v){wish=wish.map(function(x){return x===w?Object.assign({},x,{terkumpul:v}):x})}
@@ -961,14 +996,56 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
       fin({action:"wl_del",id:id},function(){return !wish.some(function(x){return String(x.id)===String(id)})});
     }
   };
-  $("darbox").onclick=function(e){if(e.target.id==="dar")makeDar()};
-  function makeDar(){
-    var n=prompt("Dana darurat untuk berapa bulan pengeluaran? (3 atau 6)","3");if(n===null)return;n=Number(n);
-    if(n!==3&&n!==6){toast("Pilih 3 atau 6 bulan.",true);return}
-    var it={id:Date.now(),nama:"Dana darurat ("+n+" bulan)",target:Math.round(n*avgOut()),prio:"Tinggi",cat:"Cadangan untuk kebutuhan mendesak",tenggat:"",status:"aktif",pemilik:meU,untuk:"me",oleh:me,terkumpul:0,jenis:"darurat"+n};
-    wish.push(it);saveW();render();toast("Dana darurat dibuat");hap(12);
-    if(SHEET_MODE)safeWrite({action:"wl_add",row:it},function(){return wish.some(function(w){return w.id===it.id})}).catch(function(err){wish=wish.filter(function(w){return w.id!==it.id});render();toast("Gagal menyimpan: "+netMsg(err),true)});
+  $("darbox").onclick=function(e){if(e.target.id==="dar")dOpen(null)};
+  // ---------- Pengaturan dana darurat oleh pengguna ----------
+  var dEdit=null;
+  function dToggle(){var n=$("dmode").value==="n";$("dbox").hidden=n;$("dtgw").hidden=!n;$("dbvw").hidden=$("dbase").value!=="m";dPrev()}
+  function dCfgForm(){
+    var m=$("dbase").value==="m",bv=Number($("dbv").value.replace(/\D/g,""))||0;
+    return {mode:$("dmode").value,n:Math.round(+$("dn").value)||0,base:m?bv:"auto",nominal:Number($("dtg").value.replace(/\D/g,""))||0};
   }
+  function dTarget(c){if(c.mode==="n")return c.nominal;var b=c.base==="auto"?avgOut():c.base;return Math.round(c.n*b)}
+  function dPrev(){
+    var c=dCfgForm(),t=dTarget(c);
+    $("dprev").textContent=t>0?"Target dana darurat: "+rp(t)+(c.mode==="b"?" ("+c.n+" bulan x "+rp(Math.round(c.base==="auto"?avgOut():c.base))+")":""):(c.mode==="b"&&c.base==="auto"?"Belum ada data pengeluaran untuk dihitung otomatis. Isi pengeluaran bulanan sendiri atau pakai nominal tetap.":"");
+  }
+  function dOpen(w){
+    dEdit=w?w.id:null;var c=w?darCfg(w):{mode:"b",n:6,base:"auto"};
+    $("dtitle").textContent=w?"Atur dana darurat":"Buat dana darurat";
+    $("dnama").value=w?w.nama:"Dana darurat";$("dmode").value=c.mode;$("dn").value=c.n;
+    $("dbase").value=c.base==="auto"?"a":"m";$("dbv").value=c.base==="auto"?"":Number(c.base).toLocaleString("id-ID");
+    $("dtg").value=c.mode==="n"&&w?Number(w.target).toLocaleString("id-ID"):"";$("dtgl").value=w?(w.tenggat||""):"";
+    dToggle();var sh=$("dsheet");hap(8);document.body.style.overflow="hidden";sh.hidden=false;
+    requestAnimationFrame(function(){sh.classList.add("open")});
+  }
+  function dClose(){var sh=$("dsheet");if(sh.hidden)return;sh.classList.remove("open");document.body.style.overflow="";setTimeout(function(){sh.hidden=true},320)}
+  $("dbk").onclick=dClose;$("dx").onclick=dClose;$("dcancel").onclick=dClose;
+  $("dmode").onchange=dToggle;$("dbase").onchange=dToggle;
+  $("dn").oninput=dPrev;$("dbv").oninput=function(){fmtN(this);dPrev()};$("dtg").oninput=function(){fmtN(this);dPrev()};
+  $("dnchips").onclick=function(e){var m=e.target.getAttribute&&e.target.getAttribute("data-m");if(m){$("dn").value=m;dPrev()}};
+  $("df").onsubmit=function(e){
+    e.preventDefault();
+    var c=dCfgForm(),nama=$("dnama").value.trim()||"Dana darurat";
+    if(c.mode==="b"){
+      if(c.n<1||c.n>36){toast("Isi jumlah bulan antara 1 dan 36.",true);return}
+      if(c.base!=="auto"&&c.base<=0){toast("Isi pengeluaran bulanan.",true);return}
+    }
+    var t=dTarget(c);
+    if(!(t>0)){toast(c.mode==="n"?"Isi target nominal.":"Belum ada data pengeluaran. Isi pengeluaran bulanan sendiri atau pakai nominal tetap.",true);return}
+    var jenis=darJ(c),tg=$("dtgl").value,old=wish;
+    if(dEdit){
+      var id=dEdit,ex=wish.filter(function(w){return String(w.id)===String(id)})[0];if(!ex){dClose();return}
+      wish=wish.map(function(w){return w===ex?Object.assign({},w,{nama:nama,target:t,tenggat:tg,jenis:jenis}):w});
+      saveW();dClose();render();toast("Dana darurat diperbarui");
+      if(SHEET_MODE)safeWrite({action:"wl_edit",id:id,row:{nama:nama,target:t,prio:ex.prio,cat:ex.cat||"",tenggat:tg,jenis:jenis}},function(){return wish.some(function(w){return String(w.id)===String(id)&&w.jenis===jenis&&w.target===t&&w.nama===nama})}).catch(function(err){wish=old;render();toast("Gagal menyimpan: "+netMsg(err),true)});
+    }else{
+      var it={id:Date.now(),nama:nama,target:t,prio:"Tinggi",cat:"Cadangan untuk kebutuhan mendesak",tenggat:tg,status:"aktif",pemilik:meU,untuk:"me",oleh:me,terkumpul:0,jenis:jenis};
+      wish.push(it);saveW();dClose();render();toast("Dana darurat dibuat");hap(12);
+      if(SHEET_MODE)safeWrite({action:"wl_add",row:it},function(){return wish.some(function(w){return w.id===it.id})}).catch(function(err){wish=wish.filter(function(w){return w.id!==it.id});render();toast("Gagal menyimpan: "+netMsg(err),true)});
+    }
+  };
+  document.addEventListener("keydown",function(e){if(e.key==="Escape")dClose()});
+
   // Bagi dana bebas ke tujuan aktif sesuai prioritas
   $("walloc").onclick=function(){
     var pr={Tinggi:0,Sedang:1,Rendah:2},free=Math.floor(freeFunds),old=wish,ch=[];
@@ -1636,7 +1713,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
     if(tin>0){rate=(tin-tout)/tin*100;add(rate<0?"warn":rate>=20?"ok":"info",rate<0?"Pengeluaran melebihi pemasukan bulan ini sebesar "+rp(tout-tin)+".":"Bulan ini Anda menyisihkan "+Math.round(rate)+"% dari pemasukan"+(rate>=20?", di atas target 20%.":"."))}
     var g=goalNote.filter(function(x){return x.i.c==="warn"})[0]||goalNote[0];
     if(g)add(g.i.c==="warn"?"warn":g.i.c==="ok"?"ok":"info","Tujuan "+g.n+": "+g.i.t);
-    var ao=avgOut(),dar=wish.filter(vis).filter(function(w){return darN(w)&&w.status!=="tercapai"})[0];
+    var ao=avgOut(),dar=wish.filter(vis).filter(function(w){return isDar(w)&&w.status!=="tercapai"})[0];
     if(!dar&&ao>0&&freeFunds<3*ao)add("info","Dana darurat ideal (3 bulan) sekitar "+rp(Math.round(3*ao))+". Buat tujuan Dana darurat di tab Tujuan.");
     var big=cur.filter(function(x){return x.tipe==="out"}).sort(function(a,b){return b.jumlah-a.jumlah})[0];
     if(big)add("info","Pengeluaran terbesar bulan ini: "+rp(big.jumlah)+" untuk "+(big.cat||big.kat)+".");
@@ -1644,10 +1721,10 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
     $("insights").innerHTML=I.length?I.map(function(x){return '<div class="ins '+x.c+'"><i></i><span>'+esc(x.t)+'</span></div>'}).join(""):'<div class="empty">Wawasan akan muncul setelah ada beberapa transaksi.</div>';
     // skor 0-100: rasio tabungan (40), cadangan dalam bulan pengeluaran (35), kepatuhan anggaran (25)
     var s1=rate===null?20:rate>=20?40:rate>=10?28:rate>=0?15:0;
-    var fund=dar?(dar.terkumpul||0):Math.max(0,freeFunds),mo=ao>0?fund/ao:0,s2=ao>0?Math.min(35,Math.round(35*mo/3)):15;
+    var bs=dar?darBase(dar):ao,fund=dar?(dar.terkumpul||0):Math.max(0,freeFunds),mo=bs>0?fund/bs:0,s2=bs>0?Math.min(35,Math.round(35*mo/3)):15;
     var s3=tot?Math.round(25*(tot-over)/tot):15,sc=s1+s2+s3,lb=sc>=75?"Sehat":sc>=50?"Cukup":"Perlu perhatian",col=sc>=75?"var(--in)":sc>=50?"#e0a02c":"var(--out)";
     $("hscore").innerHTML='<svg viewBox="0 0 42 42" role="img" aria-label="Skor '+sc+' dari 100"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="21" cy="21" r="15.9155" fill="none" stroke="'+col+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+sc+' '+(100-sc)+'" transform="rotate(-90 21 21)"/><text x="21" y="23" text-anchor="middle" font-size="10" font-weight="800" fill="var(--ink)">'+sc+'</text></svg>'+
-      '<div><b style="font-size:18px">'+lb+'</b><ul><li><span>Rasio tabungan</span><b>'+(rate===null?"-":Math.round(rate)+"%")+'</b></li><li><span>Cadangan dana</span><b>'+(ao>0?mo.toFixed(1)+" bulan":"-")+'</b></li><li><span>Anggaran</span><b>'+(tot?(tot-over)+" dari "+tot+" aman":"-")+'</b></li></ul><small style="display:block;margin-top:6px">Skor sederhana sebagai gambaran, bukan nasihat keuangan.</small></div>';
+      '<div><b style="font-size:18px">'+lb+'</b><ul><li><span>Rasio tabungan</span><b>'+(rate===null?"-":Math.round(rate)+"%")+'</b></li><li><span>Cadangan dana</span><b>'+(bs>0?mo.toFixed(1)+" bulan":"-")+'</b></li><li><span>Anggaran</span><b>'+(tot?(tot-over)+" dari "+tot+" aman":"-")+'</b></li></ul><small style="display:block;margin-top:6px">Skor sederhana sebagai gambaran, bukan nasihat keuangan.</small></div>';
   }
 
   function vis(x){
