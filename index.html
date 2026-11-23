@@ -212,6 +212,18 @@ li{animation:paneIn .3s both}
 body.loading #tab{background:linear-gradient(90deg,rgba(255,255,255,.12),rgba(255,255,255,.3),rgba(255,255,255,.12));background-size:200% 100%;animation:shim 1.2s infinite;border-radius:8px;color:transparent!important;min-width:60%;display:inline-block}
 body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in srgb,var(--line) 40%,transparent),var(--line));background-size:200% 100%;animation:shim 1.2s infinite;border-radius:8px;color:transparent!important;min-width:50%;display:inline-block}
 @keyframes shim{to{background-position:-200% 0}}
+/* ---- kunci PIN ---- */
+.lockscr{position:fixed;inset:0;z-index:60;background:var(--bg);display:grid;justify-items:center;align-content:center;gap:12px;padding:20px}
+.lockscr[hidden]{display:none}
+.ldots{display:flex;gap:14px;margin:6px 0}.ldots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted);transition:background-color .15s,border-color .15s,transform .15s}
+.ldots i.on{background:var(--in);border-color:var(--in);transform:scale(1.1)}
+.lmsg{min-height:20px;font-size:13px;color:var(--out);text-align:center;max-width:280px}
+.kp{display:grid;grid-template-columns:repeat(3,72px);gap:14px;margin:4px 0}
+.kp button{width:72px;height:72px;border-radius:50%;font-size:24px;font-weight:600;padding:0;background:var(--surface);box-shadow:var(--shadow);border:0}
+.kp button.ghost{background:none;box-shadow:none;border:0;pointer-events:none}
+.lacts{display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center}
+@keyframes shake{0%,100%{transform:none}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.ldots.bad{animation:shake .35s}
 </style>
 </head>
 <body>
@@ -475,6 +487,18 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
     </section>
     <section><h2>Pasangan</h2><div class="card" id="pinfo"></div></section>
   </div>
+  <section id="secsec"><h2>Keamanan</h2>
+    <div class="card">
+      <div class="ghead"><b id="lstat">Kunci aplikasi mati</b></div>
+      <p class="note" id="lnote" style="margin:6px 0 10px">Data keuangan ada di HP ini. Kunci PIN mencegah orang lain membukanya bila HP dipinjam atau hilang.</p>
+      <div class="acts2"><button type="button" id="lon" class="primary">Aktifkan kunci PIN</button><button type="button" id="lchg" hidden>Ubah PIN</button><button type="button" id="loff" hidden>Matikan kunci</button></div>
+      <label class="f" id="lautow" hidden style="margin-top:12px">Kunci otomatis<select id="lauto"><option value="0">Segera saat aplikasi ditutup</option><option value="60">Setelah 1 menit</option><option value="300">Setelah 5 menit</option></select></label>
+      <label class="chk" id="lbiow" hidden style="margin-top:12px"><input type="checkbox" id="lbioc">Buka dengan sidik jari atau wajah</label>
+      <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+      <button type="button" id="lall">Keluar dari semua perangkat</button>
+      <p class="note" style="margin:8px 0 0">Berguna bila HP hilang atau Anda khawatir akun dipakai orang lain. Semua perangkat, termasuk ini, perlu masuk lagi.</p>
+    </div>
+  </section>
   <section><h2>Aplikasi</h2><div class="tools">
     <button id="csv">Unduh CSV</button>
     <button id="bak">Backup JSON</button>
@@ -485,7 +509,19 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
   </div>
   </section></div>
   <p id="status" role="status" style="color:var(--muted);font-size:13px"></p>
-<div id="sheet" class="sheet" hidden>
+<div id="lock" class="lockscr" hidden>
+    <svg class="logo big" aria-hidden="true"><use href="#lg"/></svg>
+    <h2 id="ltitle" style="justify-content:center">Masukkan PIN</h2>
+    <div id="ldots" class="ldots" aria-hidden="true"></div>
+    <div id="lmsg" class="lmsg" role="alert"></div>
+    <div id="kp" class="kp"></div>
+    <div class="lacts">
+      <button type="button" id="lbio" hidden>Sidik jari atau wajah</button>
+      <button type="button" id="lforgot" class="lnk">Lupa PIN</button>
+      <button type="button" id="lcancel" class="lnk" hidden>Batal</button>
+    </div>
+  </div>
+  <div id="sheet" class="sheet" hidden>
     <div class="sbk" id="sbk"></div>
     <div class="sp" role="dialog" aria-label="Catat transaksi">
       <div class="grab"></div>
@@ -552,7 +588,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
   function parse(r){return r.text().then(function(t){try{return JSON.parse(t)}catch(e){var er=new Error("Respons server tidak terbaca.");er.net=true;throw er}})}
   function post(body){return fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}).then(parse).catch(function(e){throw net(e)})}
   function call(body){return post(Object.assign({token:token},body)).then(function(j){if(j.error)throw new Error(j.error);return j})}
-  function getJson(){var q=(lastVer&&Date.now()-lastFull<3e5)?"&v="+encodeURIComponent(lastVer):"";return fetch(API_URL+"?token="+encodeURIComponent(token)+q,{cache:"no-store"}).then(parse).catch(function(e){throw net(e)})}
+  function getJson(){var v=(lastVer&&Date.now()-lastFull<3e5)?lastVer:"";return post({action:"data",token:token,v:v})}
   function pause(ms){return new Promise(function(r){setTimeout(r,ms)})}
   function netMsg(err){return err.net?"Koneksi terputus. Perubahan mungkin sudah tersimpan, muat ulang untuk memeriksa.":err.message}
   var QRE=/^(add|edit|delete)$/;
@@ -825,7 +861,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
   function applyRole(){
     var adm=role==="admin",ts=adm?["adm","acc"]:["home","add","wish","aset","acc"];
     $("nav").innerHTML=ts.map(function(t){return '<button type="button" data-t="'+t+'"><svg viewBox="0 0 24 24" aria-hidden="true">'+TABS[t][1]+'</svg><span>'+TABS[t][0]+'</span></button>'}).join("");
-    $("csv").hidden=adm;$("repsec").hidden=adm;$("rulew").hidden=!SHEET_MODE;$("rpsec").hidden=!SHEET_MODE;$("nwsec").hidden=!SHEET_MODE;$("accsec").hidden=!SHEET_MODE;
+    $("csv").hidden=adm;$("repsec").hidden=adm;$("rulew").hidden=!SHEET_MODE;$("rpsec").hidden=!SHEET_MODE;$("nwsec").hidden=!SHEET_MODE;$("secsec").hidden=!SHEET_MODE;$("accsec").hidden=!SHEET_MODE;
     go(ts.indexOf(cur)<0?ts[0]:cur);
   }
   $("nav").onclick=function(e){var b=e.target.closest("button");if(b)go(b.getAttribute("data-t"))};
@@ -1112,6 +1148,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
   }
   function chg(c,p){return p>0?(c/p-1)*100:null}
   function fp(v){return v===null?"-":(v>=0?"+":"")+v.toFixed(0)+"%"}
+  function fdn(t){var p=t.split("-");return +p[2]+" "+BLN[+p[1]-1]+" "+p[0]}
   function build(){
     var R=range(),all=data.filter(vis).filter(function(x){return x.tipe!=="bal"});
     var rows=all.filter(function(x){return x.tgl>=R.a&&x.tgl<=R.b}).sort(function(a,b){return (a.tgl+(a.jam||"")).localeCompare(b.tgl+(b.jam||""))});
@@ -1201,7 +1238,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
       y+=58+10;
       doc.setFontSize(9);tc(GR);
       var hl=["Transaksi: "+r.rows.length,"Rata-rata pengeluaran/hari: "+rp(Math.round(r.avg))];
-      if(r.wd)hl.push("Hari terboros: "+r.wd+" ("+rp(r.wv)+")");
+      if(r.wd)hl.push("Hari terboros: "+fdn(r.wd)+" ("+rp(r.wv)+")");
       t(hl.join("     "),M,y+8);y+=14;
       if(r.bk.length>1&&(r.tin||r.tout)){
         head("Arus kas per "+(r.mode==="d"?"hari":r.mode==="w"?"minggu":"bulan"));
@@ -1225,7 +1262,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
       }
       if(r.top.length){
         head("5 pengeluaran terbesar");doc.setFontSize(10);
-        r.top.forEach(function(x,i){pg(20);y+=18;tc(BK);t((i+1)+".",M,y);t(x.tgl,M+16,y);t(x.kat,M+95,y);var c=String(x.cat||"");t(c.length>32?c.slice(0,31)+"...":c,M+175,y);tc(RD);t(rp(x.jumlah),W-M,y,{align:"right"})});
+        r.top.forEach(function(x,i){pg(20);y+=18;tc(BK);t((i+1)+".",M,y);t(fdn(x.tgl),M+16,y);t(x.kat,M+95,y);var c=String(x.cat||"");t(c.length>32?c.slice(0,31)+"...":c,M+175,y);tc(RD);t(rp(x.jumlah),W-M,y,{align:"right"})});
       }
       if(r.bg.length){
         head("Anggaran"+(r.mon>1?" (batas x "+r.mon+" bulan)":""));doc.setFontSize(10);
@@ -1239,7 +1276,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
         head("Aset & investasi (kondisi saat ini)");doc.setFontSize(8.5);tc(GR);y+=14;
         t("Nama",M,y);t("Jenis",M+150,y);t("Jumlah x harga",M+215,y);t("Nilai",M+410,y,{align:"right"});t("Untung/rugi",W-M,y,{align:"right"});doc.setFontSize(9.5);
         r.A.forEach(function(a){
-          pg(18);y+=16;var v=a.jumlah*a.harga,g=v-a.modal;tc(BK);var nn=a.nama.length>24?a.nama.slice(0,23)+"...":a.nama;t(nn,M,y);t(a.jenis,M+150,y);
+          pg(a===r.A[r.A.length-1]?44:18);y+=16;var v=a.jumlah*a.harga,g=v-a.modal;tc(BK);var nn=a.nama.length>24?a.nama.slice(0,23)+"...":a.nama;t(nn,M,y);t(a.jenis,M+150,y);
           t(Number(a.jumlah).toLocaleString("id-ID",{maximumFractionDigits:6})+" x "+(a.harga?rp(a.harga):"-"),M+215,y);t(rp(v),M+410,y,{align:"right"});tc(g<0?RD:G);t((g>=0?"+":"")+rp(g),W-M,y,{align:"right"});
         });
         pg(46);y+=22;doc.setFont("helvetica","bold");tc(BK);t("Total aset "+rp(r.av)+"   Modal "+rp(r.am)+"   Tabungan "+rp(r.sav)+"   Kekayaan bersih "+rp(r.av+r.sav),M,y);doc.setFont("helvetica","normal");
@@ -1251,7 +1288,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
         r.rows.forEach(function(x){
           if(pg(18)){y+=6;th()}
           y+=16;if(z++%2===0){fl([246,249,248]);doc.rect(M-4,y-11,CW+8,16,"F")}
-          tc(BK);t(x.tgl+" "+(x.jam||""),M,y);t(x.kat,M+100,y);var c=String(x.cat||"");t(c.length>38?c.slice(0,37)+"...":c,M+185,y);
+          tc(BK);t(fdn(x.tgl)+" "+(x.jam||""),M,y);t(x.kat,M+100,y);var c=String(x.cat||"");t(c.length>38?c.slice(0,37)+"...":c,M+185,y);
           tc(x.tipe==="in"?G:RD);t((x.tipe==="in"?"+":"-")+rp(x.jumlah),W-M,y,{align:"right"});
         });
       }
@@ -1727,6 +1764,128 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
       '<div><b style="font-size:18px">'+lb+'</b><ul><li><span>Rasio tabungan</span><b>'+(rate===null?"-":Math.round(rate)+"%")+'</b></li><li><span>Cadangan dana</span><b>'+(bs>0?mo.toFixed(1)+" bulan":"-")+'</b></li><li><span>Anggaran</span><b>'+(tot?(tot-over)+" dari "+tot+" aman":"-")+'</b></li></ul><small style="display:block;margin-top:6px">Skor sederhana sebagai gambaran, bukan nasihat keuangan.</small></div>';
   }
 
+  // ---------- Kunci aplikasi (PIN 6 angka + sidik jari/wajah) ----------
+  // PIN hanya disimpan di perangkat ini sebagai hash PBKDF2. Ini pengaman lokal, bukan pengganti password akun.
+  var lk={mode:"unlock",buf:"",first:"",purpose:""},hiddenAt=0;
+  function lkGet(){try{return JSON.parse(localStorage.getItem("rekap-lock")||"null")}catch(e){return null}}
+  function lkSet(o){try{if(o)localStorage.setItem("rekap-lock",JSON.stringify(o));else localStorage.removeItem("rekap-lock")}catch(e){}}
+  function lockOn(){var c=lkGet();return !!(c&&c.h)}
+  function b64(buf){var a=new Uint8Array(buf),t="";for(var i=0;i<a.length;i++)t+=String.fromCharCode(a[i]);return btoa(t)}
+  function unb64(t){var b=atob(t),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+  function rnd(n){return crypto.getRandomValues(new Uint8Array(n))}
+  function pbk(pin,salt){
+    return crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveBits"]).then(function(k){
+      return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:salt,iterations:150000},k,256);
+    }).then(b64);
+  }
+  function lmsg(t){$("lmsg").textContent=t||""}
+  function renderLock(){
+    var T={unlock:"Masukkan PIN",set1:"Buat PIN 6 angka",set2:"Ulangi PIN",chk:"Masukkan PIN saat ini"};
+    $("ltitle").textContent=T[lk.mode];
+    $("ldots").innerHTML=[0,1,2,3,4,5].map(function(i){return '<i'+(i<lk.buf.length?' class="on"':'')+'></i>'}).join("");
+    var c=lkGet();
+    $("lbio").hidden=!(lk.mode==="unlock"&&c&&c.bio);
+    $("lforgot").hidden=lk.mode!=="unlock"&&lk.mode!=="chk";
+    $("lcancel").hidden=lk.mode==="unlock";
+  }
+  function showLock(mode,purpose){
+    lk={mode:mode,buf:"",first:"",purpose:purpose||""};
+    $("lock").hidden=false;document.body.style.overflow="hidden";lmsg("");renderLock();
+    var c=lkGet();if(mode==="unlock"&&c&&c.bio)setTimeout(tryBio,400);
+  }
+  function hideLock(){var l=$("lock");if(l&&!l.hidden){l.hidden=true;document.body.style.overflow=""}lk.buf=""}
+  $("kp").innerHTML=["1","2","3","4","5","6","7","8","9","","0","del"].map(function(k){
+    return k===""?'<button type="button" class="ghost" tabindex="-1"></button>':'<button type="button" data-k="'+k+'" aria-label="'+(k==="del"?"Hapus":k)+'">'+(k==="del"?"&#9003;":k)+'</button>';
+  }).join("");
+  $("kp").onclick=function(e){var k=e.target.getAttribute&&e.target.getAttribute("data-k");if(k)pinKey(k)};
+  document.addEventListener("keydown",function(e){
+    if($("lock").hidden)return;
+    if(/^\d$/.test(e.key))pinKey(e.key);else if(e.key==="Backspace")pinKey("del");
+  });
+  function pinKey(k){
+    if(lk.busy)return;
+    if(k==="del")lk.buf=lk.buf.slice(0,-1);else if(lk.buf.length<6)lk.buf+=k;
+    renderLock();hap(6);
+    if(lk.buf.length===6)setTimeout(pinDone,120);
+  }
+  function bad(m){lmsg(m);lk.buf="";renderLock();hap([30,60,30]);var d=$("ldots");d.classList.remove("bad");void d.offsetWidth;d.classList.add("bad")}
+  function pinDone(){
+    var pin=lk.buf,c=lkGet();
+    if(lk.mode==="set1"){lk.first=pin;lk.mode="set2";lk.buf="";lmsg("");renderLock();return}
+    if(lk.mode==="set2"){
+      if(pin!==lk.first){lk.mode="set1";lk.first="";bad("PIN tidak sama. Ulangi dari awal.");renderLock();return}
+      if(!window.crypto||!crypto.subtle){bad("Browser ini belum mendukung kunci PIN.");return}
+      var salt=rnd(16),old=lkGet()||{};lk.busy=true;
+      pbk(pin,salt).then(function(h){
+        lkSet({s:b64(salt),h:h,auto:old.auto==null?60:old.auto,bio:old.bio||null,fails:0,until:0});
+        lk.busy=false;hideLock();toast("Kunci PIN aktif");renderSec();
+      }).catch(function(){lk.busy=false;bad("Gagal menyimpan PIN.")});
+      return;
+    }
+    if(!c){hideLock();return}
+    if(Date.now()<(c.until||0)){bad("Terlalu banyak percobaan. Tunggu "+Math.ceil((c.until-Date.now())/1000)+" detik.");return}
+    lk.busy=true;
+    pbk(pin,unb64(c.s)).then(function(h){
+      lk.busy=false;
+      if(h===c.h){
+        c.fails=0;c.until=0;lkSet(c);
+        if(lk.mode==="unlock"){hideLock();hap(10)}
+        else if(lk.purpose==="off"){lkSet(null);hideLock();toast("Kunci PIN dimatikan");renderSec()}
+        else{lk.mode="set1";lk.buf="";lk.first="";renderLock()}
+      }else{
+        c.fails=(c.fails||0)+1;
+        if(c.fails>=10){logout("Terlalu banyak PIN salah. Sesi di perangkat ini dihapus, silakan masuk lagi.");return}
+        if(c.fails%5===0)c.until=Date.now()+30000*(c.fails/5);
+        lkSet(c);
+        bad(c.fails%5===0?"PIN salah "+c.fails+" kali. Tunggu "+(30*(c.fails/5))+" detik.":"PIN salah. Sisa percobaan sebelum sesi dihapus: "+(10-c.fails)+".");
+      }
+    }).catch(function(){lk.busy=false;bad("Gagal memeriksa PIN.")});
+  }
+  $("lcancel").onclick=function(){hideLock()};
+  $("lforgot").onclick=function(){
+    if(confirm("Keluar dari akun di perangkat ini? Anda perlu masuk lagi dengan username dan password, lalu bisa membuat PIN baru."))logout("")
+  };
+  // sidik jari / wajah lewat WebAuthn (pemeriksaan lokal di perangkat)
+  function bioOK(){return !!(window.PublicKeyCredential&&navigator.credentials&&navigator.credentials.create)}
+  function enrollBio(){
+    return navigator.credentials.create({publicKey:{challenge:rnd(32),rp:{name:"Rekap Keuangan"},user:{id:rnd(16),name:meU||"pengguna",displayName:me||"Pengguna"},pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required"},timeout:60000}})
+      .then(function(cr){var c=lkGet();c.bio=b64(cr.rawId);lkSet(c);renderSec();toast("Sidik jari atau wajah aktif")})
+      .catch(function(){$("lbioc").checked=false;toast("Tidak bisa mengaktifkan. Pastikan HP punya kunci layar dan sidik jari atau wajah terdaftar.",true)});
+  }
+  function tryBio(){
+    var c=lkGet();if(!c||!c.bio||!bioOK())return;
+    navigator.credentials.get({publicKey:{challenge:rnd(32),allowCredentials:[{type:"public-key",id:unb64(c.bio)}],userVerification:"required",timeout:60000}})
+      .then(function(){if(!$("lock").hidden&&lk.mode==="unlock"){hideLock();hap(10)}}).catch(function(){});
+  }
+  $("lbio").onclick=tryBio;
+  // kunci otomatis saat aplikasi ditinggalkan
+  document.addEventListener("visibilitychange",function(){
+    if(document.hidden){hiddenAt=Date.now();return}
+    var c=lkGet();
+    if(c&&c.h&&token&&$("lock").hidden&&Date.now()-hiddenAt>=(c.auto==null?60:c.auto)*1000)showLock("unlock");
+  });
+  // pengaturan di tab Akun
+  function renderSec(){
+    var on=lockOn(),c=lkGet()||{};
+    $("lstat").textContent=on?"Kunci aplikasi aktif":"Kunci aplikasi mati";
+    $("lon").hidden=on;$("lchg").hidden=!on;$("loff").hidden=!on;$("lautow").hidden=!on;
+    $("lbiow").hidden=!(on&&bioOK());
+    $("lauto").value=String(c.auto==null?60:c.auto);$("lbioc").checked=!!c.bio;
+  }
+  $("lon").onclick=function(){if(!window.crypto||!crypto.subtle){toast("Browser ini belum mendukung kunci PIN.",true);return}showLock("set1")};
+  $("lchg").onclick=function(){showLock("chk","change")};
+  $("loff").onclick=function(){showLock("chk","off")};
+  $("lauto").onchange=function(){var c=lkGet();if(c){c.auto=+this.value;lkSet(c)}};
+  $("lbioc").onchange=function(){
+    var c=lkGet();if(!c)return;
+    if(this.checked)enrollBio();else{c.bio=null;lkSet(c);renderSec()}
+  };
+  $("lall").onclick=function(){
+    if(!confirm("Keluar dari semua perangkat? Semua HP atau browser yang sedang masuk, termasuk ini, perlu login lagi."))return;
+    call({action:"logout_all"}).then(function(){logout("Anda sudah keluar dari semua perangkat.")}).catch(function(err){toast(netMsg(err),true)});
+  };
+  renderSec();
+
   function vis(x){
     if(view==="all"||!partner)return true;
     var o=x.pemilik||"";
@@ -1744,7 +1903,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
   document.querySelectorAll("input[name=view]").forEach(function(r){r.onchange=function(){view=this.value;render()}});
   function showApp(on){$("login").hidden=on;$("app").hidden=!on}
   function logout(msg){
-    token="";me="";meU="";partner=null;role="user";wish=[];users=[];aset=[];$("out").textContent="Keluar";applyPartner();
+    token="";me="";meU="";partner=null;role="user";wish=[];users=[];aset=[];lkSet(null);hideLock();$("out").textContent="Keluar";applyPartner();
     try{localStorage.removeItem(TK);sessionStorage.removeItem(TK);localStorage.removeItem(CK);localStorage.removeItem("rekap-meta")}catch(e){}
     data=[];render();showApp(false);$("lerr").textContent=msg||"";
   }
@@ -1794,6 +1953,7 @@ body.loading .grid3 b{background:linear-gradient(90deg,var(--line),color-mix(in 
     if(token){
       var c=readCache();if(c)data=c;else document.body.classList.add("loading");
       try{var mt=JSON.parse(localStorage.getItem("rekap-meta")||"null");if(mt){meU=mt.u;partner=mt.p;me=mt.n||me;role=mt.r||"user";applyPartner();fillAcc();$("out").textContent="Keluar ("+me+")"}}catch(e){}
+      if(lockOn())showLock("unlock");
       showApp(true);applyRole();render();load();handleAksi();
     }else showApp(false);
     window.addEventListener("online",function(){if(token)load()});
